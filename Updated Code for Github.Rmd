@@ -1,12 +1,12 @@
 ---
 title: "Capital and Possible Selves"
 author: "Emily Ngo"
-date: "2023-12-12"
+date: "2024-10-21"
 output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-#rename file as BC_RPP_analysis
+# rename file as BC_RPP_analysis
 
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -64,97 +64,15 @@ se.nna <- function (x)
 
 ## Loading and Cleaning Data
 
-```{r load and clean}
-#don't need to reclean RPP data because it's already cleaned by My
-# load data - delete rows with extra headings
+```{r load cleaned data}
+
+# load cleaned BC data
 BCdat <- read.csv("~/RA 23-24/Fall23_BC_clean_data_randID.csv")
 
-
-# remove test survey
-BCdat <- BCdat[BCdat$CompletionCode!="polisci",]
-
-# remove incomplete surveys
-BCdat <- BCdat %>% filter(Progress >= 45)
-
-# remove participants who did NOT consent
-BCdat <- BCdat[BCdat$Consent==1, ]
-
-# remove duplicate entries, keep oldest response
-for (i in 1:length(unique(BCdat$RecipientEmail))) {
-  
-  # get ID
-  ID <- unique(BCdat$RecipientEmail)[i]
-  
-  # get number of duplicate entries
-  count <- sum(BCdat$RecipientEmail == ID)
-  
-  # row indices of duplicate entries
-  rows <- which(BCdat$RecipientEmail == ID)
-  
-  if (count == 2) {
-    
-    # keep oldest response
-    BCdat <- BCdat %>% filter(!row_number() %in% rows[2])
-    
-  } else {
-    
-    if (count == 3) {
-      
-      # keep oldest response
-      BCdat <- BCdat %>%  filter(!row_number() %in% c(rows[2], rows[3]))
-      
-    } else {
-      
-      if (count == 1) {
-        ID <- NA # do nothing
-      } else {
-        if (is.na(count)) {
-          ID <- NA # do nothing
-        }
-      }
-    }
-  }
-}
-
-# attention checks - keep if one is correct
-BCdat <- BCdat[which(BCdat$AC_1 == 3 | BCdat$AC_2 == 6), ]
-
-#survey duration - keep within 85th percentile
+#survey duration - need to decide what percentile to keep
 psych::describe(BCdat$Duration..in.seconds.)
 
 quantile(BCdat$Duration..in.seconds., c(.15, .50, .85)) 
-
-# remove columns with Completion Codes
-drop <- colnames(BCdat[, grepl("Code", colnames(BCdat))])
-BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
-
-# remove program evaluation questions
-drop <- colnames(BCdat[, grepl("_sharedinterest|_opportunities|_knowledge|_professor|_career|_belonging|_confidence", colnames(BCdat))])
-BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
-
-# remove qualtrics metadata columns
-drop <- c("Status", "IPAddress", "Progress", "Finished", "RecordedDate", "ResponseId", 
-          "RecipientLastName", "RecipientFirstName", "ExternalReference", "LocationLatitude",
-          "LocationLongitude", "DistributionChannel", "UserLanguage")
-BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
-
-# first-gen - recode - # 1 = first gen; 0 = continuing gen
-BCdat$first_gen <- as.numeric(BCdat$first_gen)
-BCdat$first_gen <- as.numeric(BCdat$first_gen)
-recoder <- function(x) {
-  return(x - 1)
-}
-BCdat$first_gen<-recoder(BCdat$first_gen)
-BCdat$first_gen[BCdat$first_gen==3] <- NA # 3 = prefer not to state; change to NA
-
-# class year
-BCdat$class_year[BCdat$class_year==5] <- NA # 5 = other; change to NA
-
-# rename demo_class
-names(BCdat)[15] <- "subj_class"
-
-# how many students took BC more than once - 2 times = 97; more than 2 times = 45
-table(BCdat$BC_semester_count)
 
 # for mixed models, create long dataset to model within classroom
 roster <- read.csv("~/RA 23-24/_Roster_Qualtrics_V2_Final_original.csv")
@@ -178,9 +96,9 @@ RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
 #the data should all be under fall 2023, analysis folder, the first two files
 
 #cleaning names
-RPPdat$positivity<-RPPdat$possible_1
-RPPdat$plausibility<-RPPdat$possible_2
-names(RPPdat)[64]<-"first_gen"
+RPPdat$positivity <- RPPdat$possible_1
+RPPdat$plausibility <- RPPdat$possible_2
+names(RPPdat)[64] <- "first_gen"
 
 ### data cleaning numbers
 # 534 before removing ac, after for attention checks == 514 (removed 20)
