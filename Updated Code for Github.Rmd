@@ -1,6 +1,6 @@
 ---
-title: "BC_initial"
-author: "My Dao"
+title: "Capital and Possible Selves"
+author: "Emily Ngo"
 date: "2023-12-12"
 output: pdf_document
 ---
@@ -27,9 +27,6 @@ library(lazyeval)
 library(plotly)
 pkgs <- c("effectsize", "flextable", "interactions")
 install_if_not_installed(pkgs)
-
-install.packages("lme4", type = "source")
-
 
 # set working directory
 knitr::opts_knit$set(root.dir = "~/RA 23-24")
@@ -164,52 +161,6 @@ roster <- read.csv("~/RA 23-24/_Roster_Qualtrics_V2_Final_original.csv")
 BCdat <- merge(roster[,c("Email", "SectionName")], BCdat, by.x = "Email", by.y = "RecipientEmail", all.y = T)
 
 ```
-
-```{r separate email and responses}
-##### MY to go back and edit! ######
-
-# Function to generate unique 5-digit numbers based on emails
-five_digit_generator<- function(emails) {
-  # Extract unique email addresses
-  unique_emails <- unique(emails)
-  
-  # Generate unique 5-digit numbers
-  unique_numbers <- sample(10000:99999, length(unique_emails), replace = FALSE)
-  
-  # Create a mapping between emails and unique codes to make sure we are not generating two unique codes for one participant who enrolled twice
-  email_to_code_mapping <- data.frame(email = unique_emails, unique_id = unique_numbers)
-  
-  return(email_to_code_mapping)
-}
-
-#test, ignore if working
-test <- data.frame(
-  participant_name = c("Alice", "Bob", "Charlie", "David", "Eva", "Alice"),
-  RecipientEmail = c("alice@example.com", "bob@example.com", "charlie@example.com", "david@example.com", "eva@example.com", "alice@example.com")
-)
-test_id<-five_digit_generator(test$RecipientEmail)
-test <- merge(test, test_id, by.x = "RecipientEmail", by.y = "email")
-print(test)
-
-# Generate unique 5-digit numbers based on emails
-five_digit_unique_id <- five_digit_generator(BCdat$RecipientEmail)
-
-#merge
-BCdat<-merge(BCdat, five_digit_unique_id, by.x = "RecipientEmail", by.y = "email")
-
-# Print the dataset with assigned unique IDs
-#print(BCdat)
-
-#export file
-#write.csv(BCdat, file = "BC_clean_dat_ID.csv", row.names = FALSE) #has email AND ID
-
-#drop(BC_clean_dat_ID$RecipientEmail)
-#write.csv(BC_clean_dat_ID, file = "BC_clean_dat_anon.csv", row.names = FALSE) #has survey responses AND ID (no email)
-
-# export clean data
-# write.csv(BCdat, file = "BC_clean_data.csv", row.names = FALSE)
-```
-
 
 ```{r BC scoring}
 #the data should all be under fall 2023, analysis folder, the first two files
