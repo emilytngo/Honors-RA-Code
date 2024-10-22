@@ -1,0 +1,495 @@
+---
+title: "BC_initial"
+author: "My Dao"
+date: "2023-12-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+#rename file as BC_RPP_analysis
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(plyr)
+library(psych)
+library(lme4)
+library(htmltools)
+library(ltm)
+library(sjPlot)
+library(apaTables)
+library(sjmisc)
+library(ggplot2)
+library(rempsyc)
+library(stdmod)
+library(corrtable)
+library(lazyeval)
+library(plotly)
+pkgs <- c("effectsize", "flextable", "interactions")
+install_if_not_installed(pkgs)
+
+install.packages("lme4", type = "source")
+
+
+# set working directory
+knitr::opts_knit$set(root.dir = "~/RA 23-24")
+
+# scoring function
+auto.mean <- function(base, vec,df, alpha = FALSE) {
+  n <- length(vec)
+  base <- rep(base,n)
+  columns <- paste0(base,vec)
+  if(alpha == TRUE){
+    print(psych::alpha(df[,columns]))
+  }
+  rowMeans(df[,columns])
+}
+
+# removes NAs from mean calculation
+mean.nna <- function(x){
+  mean(x,na.rm=T)
+}
+
+# standard error calcuation
+se.nna <- function (x)
+{
+  if(length(table(is.na(x))) != 1){
+  n <- table(is.na(x))[1]
+  output <- sd(x,na.rm=T)/sqrt(n)
+  }
+  if(length(table(is.na(x))) == 1){
+     output<- sd(x)/sqrt(length(x))
+  }
+  output
+}
+
+```
+
+## Loading and Cleaning Data
+
+```{r load and clean}
+#don't need to reclean RPP data because it's already cleaned by My
+# load data - delete rows with extra headings
+BCdat <- read.csv("~/RA 23-24/Fall23_BC_clean_data_randID.csv")
+
+
+# remove test survey
+BCdat <- BCdat[BCdat$CompletionCode!="polisci",]
+
+# remove incomplete surveys
+BCdat <- BCdat %>% filter(Progress >= 45)
+
+# remove participants who did NOT consent
+BCdat <- BCdat[BCdat$Consent==1, ]
+
+# remove duplicate entries, keep oldest response
+for (i in 1:length(unique(BCdat$RecipientEmail))) {
+  
+  # get ID
+  ID <- unique(BCdat$RecipientEmail)[i]
+  
+  # get number of duplicate entries
+  count <- sum(BCdat$RecipientEmail == ID)
+  
+  # row indices of duplicate entries
+  rows <- which(BCdat$RecipientEmail == ID)
+  
+  if (count == 2) {
+    
+    # keep oldest response
+    BCdat <- BCdat %>% filter(!row_number() %in% rows[2])
+    
+  } else {
+    
+    if (count == 3) {
+      
+      # keep oldest response
+      BCdat <- BCdat %>%  filter(!row_number() %in% c(rows[2], rows[3]))
+      
+    } else {
+      
+      if (count == 1) {
+        ID <- NA # do nothing
+      } else {
+        if (is.na(count)) {
+          ID <- NA # do nothing
+        }
+      }
+    }
+  }
+}
+
+# attention checks - keep if one is correct
+BCdat <- BCdat[which(BCdat$AC_1 == 3 | BCdat$AC_2 == 6), ]
+
+#survey duration - keep within 85th percentile
+psych::describe(BCdat$Duration..in.seconds.)
+
+quantile(BCdat$Duration..in.seconds., c(.15, .50, .85)) 
+
+# remove columns with Completion Codes
+drop <- colnames(BCdat[, grepl("Code", colnames(BCdat))])
+BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
+
+# remove program evaluation questions
+drop <- colnames(BCdat[, grepl("_sharedinterest|_opportunities|_knowledge|_professor|_career|_belonging|_confidence", colnames(BCdat))])
+BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
+
+# remove qualtrics metadata columns
+drop <- c("Status", "IPAddress", "Progress", "Finished", "RecordedDate", "ResponseId", 
+          "RecipientLastName", "RecipientFirstName", "ExternalReference", "LocationLatitude",
+          "LocationLongitude", "DistributionChannel", "UserLanguage")
+BCdat <- BCdat[ , !(names(BCdat) %in% drop)]
+
+# first-gen - recode - # 1 = first gen; 0 = continuing gen
+BCdat$first_gen <- as.numeric(BCdat$first_gen)
+BCdat$first_gen <- as.numeric(BCdat$first_gen)
+recoder <- function(x) {
+  return(x - 1)
+}
+BCdat$first_gen<-recoder(BCdat$first_gen)
+BCdat$first_gen[BCdat$first_gen==3] <- NA # 3 = prefer not to state; change to NA
+
+# class year
+BCdat$class_year[BCdat$class_year==5] <- NA # 5 = other; change to NA
+
+# rename demo_class
+names(BCdat)[15] <- "subj_class"
+
+# how many students took BC more than once - 2 times = 97; more than 2 times = 45
+table(BCdat$BC_semester_count)
+
+# for mixed models, create long dataset to model within classroom
+roster <- read.csv("~/RA 23-24/_Roster_Qualtrics_V2_Final_original.csv")
+BCdat <- merge(roster[,c("Email", "SectionName")], BCdat, by.x = "Email", by.y = "RecipientEmail", all.y = T)
+
+```
+
+```{r separate email and responses}
+##### MY to go back and edit! ######
+
+# Function to generate unique 5-digit numbers based on emails
+five_digit_generator<- function(emails) {
+  # Extract unique email addresses
+  unique_emails <- unique(emails)
+  
+  # Generate unique 5-digit numbers
+  unique_numbers <- sample(10000:99999, length(unique_emails), replace = FALSE)
+  
+  # Create a mapping between emails and unique codes to make sure we are not generating two unique codes for one participant who enrolled twice
+  email_to_code_mapping <- data.frame(email = unique_emails, unique_id = unique_numbers)
+  
+  return(email_to_code_mapping)
+}
+
+#test, ignore if working
+test <- data.frame(
+  participant_name = c("Alice", "Bob", "Charlie", "David", "Eva", "Alice"),
+  RecipientEmail = c("alice@example.com", "bob@example.com", "charlie@example.com", "david@example.com", "eva@example.com", "alice@example.com")
+)
+test_id<-five_digit_generator(test$RecipientEmail)
+test <- merge(test, test_id, by.x = "RecipientEmail", by.y = "email")
+print(test)
+
+# Generate unique 5-digit numbers based on emails
+five_digit_unique_id <- five_digit_generator(BCdat$RecipientEmail)
+
+#merge
+BCdat<-merge(BCdat, five_digit_unique_id, by.x = "RecipientEmail", by.y = "email")
+
+# Print the dataset with assigned unique IDs
+#print(BCdat)
+
+#export file
+#write.csv(BCdat, file = "BC_clean_dat_ID.csv", row.names = FALSE) #has email AND ID
+
+#drop(BC_clean_dat_ID$RecipientEmail)
+#write.csv(BC_clean_dat_ID, file = "BC_clean_dat_anon.csv", row.names = FALSE) #has survey responses AND ID (no email)
+
+# export clean data
+# write.csv(BCdat, file = "BC_clean_data.csv", row.names = FALSE)
+```
+
+
+```{r BC scoring}
+#the data should all be under fall 2023, analysis folder, the first two files
+
+#cleaning names
+BCdat$positivity<-BCdat$possible_1
+BCdat$plausibility<-BCdat$possible_2
+
+```
+
+
+```{r RPP Scoring}
+#import dataset
+RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
+#the data should all be under fall 2023, analysis folder, the first two files
+
+#cleaning names
+RPPdat$positivity<-RPPdat$possible_1
+RPPdat$plausibility<-RPPdat$possible_2
+names(RPPdat)[64]<-"first_gen"
+
+### data cleaning numbers
+# 534 before removing ac, after for attention checks == 514 (removed 20)
+# after for survey duration == 437 (removed 77)
+```
+
+Combine dataframes
+```{r Combining BC and RPPdat into one dataframe}
+
+#combining RPP and BC
+vars <- c("random_ID", "class_year", "transfer", "first_gen", "social_class", # moderators
+          "CC_score", "CC_ling_score", "CC_nav_score", "SC_score", "SC_emo_score", "SC_inst_score", # capital
+          "positivity", "plausibility", "future_score", "authenticity_score", "belonging_score", 
+          "cc_act_score", "sc_act_score", "cc_sc_act_score", "possible_score")
+
+fulldat<-rbind(RPPdat[,vars],BCdat[BCdat$BC_semester_count==1,vars])
+
+fulldat$bc_treatment<-1
+
+fulldat$bc_treatment[1:437] <- 0
+
+#combining fulldat with institutional data
+#import data sets
+fgs<-read.csv("BC_RPP_Fall2023_Registered_Distributed.csv")
+ts<-read.csv("BC_RPP_Fall2023_App_Cohort_Deg_Distributed.csv")
+
+first_gen<-fgs[c("random_id", "FirstGenCollegeGradDesc", "AgeAtSnapshot","ShortEthnicDescCaptured")]  #select columns needed
+names(first_gen)[1]<-"random_ID"  #rename 
+names(first_gen)[2]<-"RD_first_gen"  #rename
+
+transfer<-ts[c("random_ID", "Entry.Status")]  #select columns needed
+names(transfer)[2]<-"RD_transfer"  #rename
+
+RDdata<-merge(first_gen,transfer,by="random_ID")  #combine first gen dataset and transfer dataset
+fulldat<-merge(RDdata,fulldat,by="random_ID")   #combine the combined first gen and transfer dataset with fulldat
+
+fulldat$RD_first_gen <- revalue(fulldat$RD_first_gen,
+               c("Not First Generation College"="0", "First Generation College"="1", "Unknown"="NA"))  #numerizing values
+fulldat$RD_first_gen<-as.numeric(fulldat$RD_first_gen)  #converting string into numeric 
+fulldat$RD_transfer <- revalue(fulldat$RD_transfer,
+               c("First-year Entrant"="0", "Transfer Entrant"="1", "Other"="NA"))  #numerizing values
+fulldat$RD_transfer<-as.numeric(fulldat$RD_transfer)  #converting string into numeric 
+
+#getting first_gen and tranfser data from registered distribution data
+    RPP_ds<-merge(RDdata,RPPdat,by="random_ID") 
+    RPP_ds$RD_first_gen <- revalue(RPP_ds$RD_first_gen,
+               c("Not First Generation College"="0", "First Generation College"="1", "Unknown"="NA"))  #numerizing values
+    RPP_ds$RD_first_gen<-as.numeric(RPP_ds$RD_first_gen)  #converting string into numeric 
+    RPP_ds$RD_transfer <- revalue(RPP_ds$RD_transfer,
+               c("First-year Entrant"="0", "Transfer Entrant"="1", "Other"="NA"))  #numerizing values
+    RPP_ds$RD_transfer<-as.numeric(RPP_ds$RD_transfer)  #converting string into numeric 
+    
+#alpha scores for varibales    
+x<-data.frame(fulldat$possible_score, fulldat$CC_score, fulldat$SC_score)
+psych::alpha(x)
+```
+
+## Descriptive Stats
+```{r Descriptive Stats}
+#fulldat descriptive stats
+table(fgs$FirstGenCollegeGradDesc) #tells you number of first gen vs non first gen
+table(fgs$ShortEthnicDescCaptured) #tells you race distribution
+describe(fulldat$social_class) #tells you class distribution
+table(ts$Entry.Status) #tells you transfer distribution
+
+table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==1]) #race of bc
+table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==0]) #race of rpp
+mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==1]) #age of bc
+mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==0]) #age of rpp
+table(fulldat$RD_first_gen[fulldat$bc_treatment==1]) #firstgen of bc
+table(fulldat$RD_first_gen[fulldat$bc_treatment==0]) #firstgen of rpp
+
+
+#Getting the cronbach alpha scores for relevant variables
+fulldat %>%
+  dplyr::select(CC_score, CC_ling_score, CC_nav_score, 
+                SC_score, SC_emo_score, SC_inst_score, 
+                possible_score, positivity, plausibility) %>%
+  psych::alpha()
+
+```
+
+## Descriptive Visualizations
+
+```{r visualization: histrograms of variables, echo=FALSE}
+# cultural capital
+hist(BCdat$CC_score)
+psych::describe(BCdat$CC_score)
+
+# social capital
+hist(BCdat$SC_score)
+psych::describe(BCdat$SC_score)
+
+
+# possible self
+hist(BCdat$possible_score)
+
+#Something fun, bar graph of linguistic CC in BC vs RPP sample
+df<-data.frame(x=fulldat$bc_treatment, y=fulldat$CC_ling_score)
+ggplot(fulldat, aes(bc_treatment))+
+  geom_bar(aes(fill=as.factor(CC_ling_score)))
+
+```
+
+Correlation Matrix
+```{r Correlation Matrix}
+#Corr matrix for variables
+cor_vars <- c("possible_score",
+              "CC_score","SC_score") # capital
+cordat<-rbind(fulldat[,cor_vars])
+cor<-cor(cordat, use = "complete.obs")
+upper<-cor
+upper[upper.tri(cor)]<-""
+upper<-as.data.frame(upper)
+print(upper)
+correlation_matrix(cordat, digits=2, use="lower", replace_diagonal = T)
+
+#Corr matrix for moderators
+cor_vars <- c("social_class","RD_first_gen", "RD_transfer")
+cordat<-rbind(fulldat[,cor_vars])
+cor<-cor(cordat, use = "complete.obs")
+upper<-cor
+upper[upper.tri(cor)]<-""
+upper<-as.data.frame(upper)
+print(upper)
+correlation_matrix(cordat, digits=2, use="lower", replace_diagonal = T)
+#save_correlation_matrix(df=cordat, filename= "moderators-correlation-matrix.csv", digits=3, use="lower")
+```
+
+```{r T-Tests}
+##Does Berkeley Connect provide capital to students?
+#First, I look at what CC looks like to get a hint on group difference
+describe(fulldat$CC_score[fulldat$bc_treatment==1]) #CC stats in BC group
+describe(fulldat$CC_score[fulldat$bc_treatment==0]) #CC stats in RPP group
+
+#T-tests of PS, SC, CC between BC vs RPP groups
+t.test(fulldat$possible_score[fulldat$bc_treatment==1],fulldat$possible_score[fulldat$bc_treatment==0])  #sig with BC higher
+t.test(fulldat$SC_score[fulldat$bc_treatment==1],fulldat$SC_score[fulldat$bc_treatment==0]) #sig with bc higher
+t.test(fulldat$CC_score[fulldat$bc_treatment==1],fulldat$CC_score[fulldat$bc_treatment==0])  #sig with bc higher
+t.test(fulldat$CC_nav_score[fulldat$bc_treatment==1],fulldat$CC_nav_score[fulldat$bc_treatment==0])  #sig with BC higher
+
+#T-tests of moderators between BC vs RPP groups
+t.test(fulldat$RD_first_gen[fulldat$bc_treatment==1],fulldat$RD_first_gen[fulldat$bc_treatment==0]) #slightly sig with BC higher
+t.test(fulldat$RD_transfer[fulldat$bc_treatment==1],fulldat$RD_transfer[fulldat$bc_treatment==0])  #sig with BC higher
+t.test(fulldat$social_class[fulldat$bc_treatment==1],fulldat$social_class[fulldat$bc_treatment==0])  #sig with BC higher
+
+```
+
+
+RPP vs BC analysis
+```{r RPP vs BC Analysis}
+#RPP vs BC Analysis
+#Is PS positively correlated with cultural and social capital?
+  #Possible Score
+    mod<-lm(possible_score~CC_score+SC_score, data=fulldat)
+    confint(mod)
+    summary(mod)
+    
+    #when we add BC enrollment as a predictor, the interactions weakens
+    mod<-lm(possible_score~CC_score*bc_treatment
+            +SC_score*bc_treatment,
+            data=fulldat) 
+    confint(mod)
+    summary(mod)
+```
+
+```{r RPP vs BC analysis Moderators}
+##Moderators
+  #Does SES moderate the interaction? 
+  #Social class 
+    fit<-lm(possible_score~
+              CC_score*social_class*bc_treatment+
+              SC_score*social_class*bc_treatment, na.rm=T, data=fulldat)
+    summary(fit)  #nothing sig
+   #First- Gen
+      #PS~CC+SC
+    fit<-lm(possible_score~
+              CC_score*RD_first_gen*bc_treatment+
+              SC_score*RD_first_gen*bc_treatment, data=fulldat)
+    summary(fit)  #nothing sig with moderators, sig in CC:BC which means BC is good at distributing CC
+    #Main takeaways:
+  #the significant main effect of social capital implies that social capital is good for your PS for all students regardless of BC enrollment (we know this bc the two way interaction (bc_treatment::SC_score is not significant)
+  #the two-way interaction with CC score and bc_treatment implies that bc is a good program for distributing CC and having it reflected in the ps score. We know this because the main effect of cc is not significant (gaining CC outside of bc in other methods are not as effective as being enrolled in bc), but it is significant when the student is enrolled in bc
+  #when i'm writing this up, remember it is correlation/interaction/related, not a causal effect (lessen the causal language)
+
+
+  #Transfer status
+    #PS~CC+SC
+    fit<-lm(possible_score~
+              CC_score*RD_transfer*bc_treatment+
+              SC_score*RD_transfer*bc_treatment, data=fulldat)
+    confint(fit)
+    summary(fit)  #nothing sig
+
+#main takeaways:
+  #when ur a bc enrolled student who is a transfer, there isn't a difference with ur PS score vs students who aren't enrolled (this is referring to the three-way interaction)
+    #student's backgrounds don't matter here
+  #we do see the similar results that we saw with first gen, but those are the two-way interactions described above
+#across the transfer and first-gen models, we see two-way interactions come out (bc_treatment::CC_score)
+    
+    #Generation Status
+        mod<-lm(possible_score~
+                CC_score*bc_treatment*RD_first_gen
+                +SC_score*bc_treatment*RD_first_gen, 
+                data=fulldat)
+            summary(mod)
+    #same reasoning for gen status insignificance as above 
+```
+
+```{r line graphs}
+#PS~CC/SC*BC
+fit<-lm(possible_score~CC_score*bc_treatment+SC_score*bc_treatment, data=fulldat)
+summary(fit)
+plot_model(lm(possible_score ~ CC_score*bc_treatment,
+                data = fulldat), type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Capital Score", "Possible Self Rating"),
+           legend.title = "Berkeley Connect Enrollment")
+
+fit<-lm(possible_score~CC_score*bc_treatment, data=fulldat)
+summary(fit)
+plot_model(lm(possible_score ~ CC_score*bc_treatment,
+                data = fulldat), type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Cultural Capital Score", "Possible Self Rating"),
+           legend.title = "Berkeley Connect Enrollment")
+
+fit<-lm(possible_score~SC_score*bc_treatment, data=fulldat)
+summary(fit)
+plot_model(lm(possible_score ~ SC_score*bc_treatment,
+                data = fulldat), type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Social Capital Score", "Possible Self Rating"),
+           legend.title = "Berkeley Connect Enrollment")
+
+#Moderators line graph
+#Transfer
+fit1<-lm(possible_score~CC_score*RD_transfer*bc_treatment+SC_score*RD_transfer*bc_treatment, data=fulldat)
+summary(fit1)
+x<-plot_model(fit1, type = "int", colors="bw",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Capital Score", "Possible Self Rating"),
+           legend.title = "Transfer Status")  #refer to graph #6 that generates
+x
+
+#SES
+fit1<-lm(possible_score~CC_score*social_class*bc_treatment+SC_score*social_class*bc_treatment, data=fulldat)
+summary(fit1)
+x<-plot_model(fit1, type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Cultural Capital Score", "Possible Self Rating")) #refer to graph #6 that generates
+x
+
+#gen status
+fit1<-lm(possible_score~CC_score*RD_first_gen*bc_treatment+SC_score*RD_first_gen*bc_treatment, data=fulldat)
+summary(fit1)
+x<-plot_model(fit1, type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Cultural Capital Score", "Possible Self Rating")) #refer to graph #6 that generates
+x
+```
+
+
