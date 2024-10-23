@@ -68,6 +68,8 @@ se.nna <- function (x)
 
 # load cleaned BC data
 BCdat <- read.csv("~/RA 23-24/Fall23_BC_clean_data_randID.csv")
+RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
+# for rpp: 534 before removing ac, after for attention checks == 514 (removed 20), after for survey duration == 437 (removed 77)
 
 #survey duration - need to decide what percentile to keep
 psych::describe(BCdat$Duration..in.seconds.)
@@ -80,38 +82,13 @@ BCdat <- merge(roster[,c("Email", "SectionName")], BCdat, by.x = "Email", by.y =
 
 ```
 
-```{r BC scoring}
-#the data should all be under fall 2023, analysis folder, the first two files
-
-#cleaning names
-BCdat$positivity<-BCdat$possible_1
-BCdat$plausibility<-BCdat$possible_2
-
-```
-
-
-```{r RPP Scoring}
-#import dataset
-RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
-#the data should all be under fall 2023, analysis folder, the first two files
-
-#cleaning names
-RPPdat$positivity <- RPPdat$possible_1
-RPPdat$plausibility <- RPPdat$possible_2
-names(RPPdat)[64] <- "first_gen"
-
-### data cleaning numbers
-# 534 before removing ac, after for attention checks == 514 (removed 20)
-# after for survey duration == 437 (removed 77)
-```
-
 Combine dataframes
 ```{r Combining BC and RPPdat into one dataframe}
 
 #combining RPP and BC
 vars <- c("random_ID", "class_year", "transfer", "first_gen", "social_class", # moderators
           "CC_score", "CC_ling_score", "CC_nav_score", "SC_score", "SC_emo_score", "SC_inst_score", # capital
-          "positivity", "plausibility", "future_score", "authenticity_score", "belonging_score", 
+          "future_score", "authenticity_score", "belonging_score", 
           "cc_act_score", "sc_act_score", "cc_sc_act_score", "possible_score")
 
 fulldat<-rbind(RPPdat[,vars],BCdat[BCdat$BC_semester_count==1,vars])
