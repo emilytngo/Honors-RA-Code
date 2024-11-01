@@ -87,9 +87,9 @@ vars <- c("random_ID", "class_year", "transfer", "first_gen", "social_class", # 
 
 fulldat<-rbind(RPPdat[,vars],BCdat[BCdat$BC_semester_count==1,vars])
 
-fulldat$bc_treatment<-1
+fulldat$treatment<-1
 
-fulldat$bc_treatment[1:437] <- 0
+fulldat$treatment[1:437] <- 0
 
 #combining fulldat with institutional data
 #import data sets
@@ -133,12 +133,12 @@ table(fulldat$ShortEthnicDescCaptured) #tells you race distribution
 describe(fulldat$social_class) #tells you class distribution
 table(fulldat$Entry.Status) #tells you transfer distribution
 
-table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==1]) #race of bc
-table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==0]) #race of rpp
-mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==1]) #age of bc
-mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==0]) #age of rpp
-table(fulldat$RD_first_gen[fulldat$bc_treatment==1]) #firstgen of bc
-table(fulldat$RD_first_gen[fulldat$bc_treatment==0]) #firstgen of rpp
+table(fulldat$ShortEthnicDescCaptured[fulldat$treatment==1]) #race of bc
+table(fulldat$ShortEthnicDescCaptured[fulldat$treatment==0]) #race of rpp
+mean(fulldat$AgeAtSnapshot[fulldat$treatment==1]) #age of bc
+mean(fulldat$AgeAtSnapshot[fulldat$treatment==0]) #age of rpp
+table(fulldat$RD_first_gen[fulldat$treatment==1]) #firstgen of bc
+table(fulldat$RD_first_gen[fulldat$treatment==0]) #firstgen of rpp
 
 ```
 
@@ -158,8 +158,8 @@ psych::describe(BCdat$SC_score)
 hist(BCdat$possible_score)
 
 #Something fun, bar graph of linguistic CC in BC vs RPP sample
-df<-data.frame(x=fulldat$bc_treatment, y=fulldat$CC_ling_score)
-ggplot(fulldat, aes(bc_treatment))+
+df<-data.frame(x=fulldat$treatment, y=fulldat$CC_ling_score)
+ggplot(fulldat, aes(treatment))+
   geom_bar(aes(fill=as.factor(CC_ling_score)))
 
 ```
@@ -175,19 +175,19 @@ matCorr <- Hmisc::rcorr(as.matrix(fulldat[, c("possible_score",
 ```{r T-Tests}
 ##Does Berkeley Connect provide capital to students?
 #First, I look at what CC looks like to get a hint on group difference
-describe(fulldat$CC_score[fulldat$bc_treatment==1]) #CC stats in BC group
-describe(fulldat$CC_score[fulldat$bc_treatment==0]) #CC stats in RPP group
+describe(fulldat$CC_score[fulldat$treatment==1]) #CC stats in BC group
+describe(fulldat$CC_score[fulldat$treatment==0]) #CC stats in RPP group
 
 #T-tests of PS, SC, CC between BC vs RPP groups
-t.test(fulldat$possible_score[fulldat$bc_treatment==1],fulldat$possible_score[fulldat$bc_treatment==0])  #sig with BC higher
-t.test(fulldat$SC_score[fulldat$bc_treatment==1],fulldat$SC_score[fulldat$bc_treatment==0]) #sig with bc higher
-t.test(fulldat$CC_score[fulldat$bc_treatment==1],fulldat$CC_score[fulldat$bc_treatment==0])  #sig with bc higher
-t.test(fulldat$CC_nav_score[fulldat$bc_treatment==1],fulldat$CC_nav_score[fulldat$bc_treatment==0])  #sig with BC higher
+t.test(fulldat$possible_score[fulldat$treatment==1],fulldat$possible_score[fulldat$treatment==0])  #sig with BC higher
+t.test(fulldat$SC_score[fulldat$treatment==1],fulldat$SC_score[fulldat$treatment==0]) #sig with bc higher
+t.test(fulldat$CC_score[fulldat$treatment==1],fulldat$CC_score[fulldat$treatment==0])  #sig with bc higher
+t.test(fulldat$CC_nav_score[fulldat$treatment==1],fulldat$CC_nav_score[fulldat$treatment==0])  #sig with BC higher
 
 #T-tests of moderators between BC vs RPP groups
-t.test(fulldat$RD_first_gen[fulldat$bc_treatment==1],fulldat$RD_first_gen[fulldat$bc_treatment==0]) #slightly sig with BC higher
-t.test(fulldat$RD_transfer[fulldat$bc_treatment==1],fulldat$RD_transfer[fulldat$bc_treatment==0])  #sig with BC higher
-t.test(fulldat$social_class[fulldat$bc_treatment==1],fulldat$social_class[fulldat$bc_treatment==0])  #sig with BC higher
+t.test(fulldat$RD_first_gen[fulldat$treatment==1],fulldat$RD_first_gen[fulldat$treatment==0]) #slightly sig with BC higher
+t.test(fulldat$RD_transfer[fulldat$treatment==1],fulldat$RD_transfer[fulldat$treatment==0])  #sig with BC higher
+t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$treatment==0])  #sig with BC higher
 
 ```
 
@@ -202,8 +202,8 @@ RPP vs BC analysis
     summary(mod)
     
     #when we add BC enrollment as a predictor, the interactions weakens
-    mod<-lm(possible_score~CC_score*bc_treatment
-            +SC_score*bc_treatment,
+    mod<-lm(possible_score~CC_score*treatment
+            +SC_score*treatment,
             data=fulldat) 
     confint(mod)
     summary(mod)
@@ -214,26 +214,26 @@ RPP vs BC analysis
   #Does SES moderate the interaction? 
   #Social class 
     fit<-lm(possible_score~
-              CC_score*social_class*bc_treatment+
-              SC_score*social_class*bc_treatment, na.rm=T, data=fulldat)
+              CC_score*social_class*treatment+
+              SC_score*social_class*treatment, na.rm=T, data=fulldat)
     summary(fit)  #nothing sig
    #First- Gen
       #PS~CC+SC
     fit<-lm(possible_score~
-              CC_score*RD_first_gen*bc_treatment+
-              SC_score*RD_first_gen*bc_treatment, data=fulldat)
+              CC_score*RD_first_gen*treatment+
+              SC_score*RD_first_gen*treatment, data=fulldat)
     summary(fit)  #nothing sig with moderators, sig in CC:BC which means BC is good at distributing CC
     #Main takeaways:
-  #the significant main effect of social capital implies that social capital is good for your PS for all students regardless of BC enrollment (we know this bc the two way interaction (bc_treatment::SC_score is not significant)
-  #the two-way interaction with CC score and bc_treatment implies that bc is a good program for distributing CC and having it reflected in the ps score. We know this because the main effect of cc is not significant (gaining CC outside of bc in other methods are not as effective as being enrolled in bc), but it is significant when the student is enrolled in bc
+  #the significant main effect of social capital implies that social capital is good for your PS for all students regardless of BC enrollment (we know this bc the two way interaction (treatment::SC_score is not significant)
+  #the two-way interaction with CC score and treatment implies that bc is a good program for distributing CC and having it reflected in the ps score. We know this because the main effect of cc is not significant (gaining CC outside of bc in other methods are not as effective as being enrolled in bc), but it is significant when the student is enrolled in bc
   #when i'm writing this up, remember it is correlation/interaction/related, not a causal effect (lessen the causal language)
 
 
   #Transfer status
     #PS~CC+SC
     fit<-lm(possible_score~
-              CC_score*RD_transfer*bc_treatment+
-              SC_score*RD_transfer*bc_treatment, data=fulldat)
+              CC_score*RD_transfer*treatment+
+              SC_score*RD_transfer*treatment, data=fulldat)
     confint(fit)
     summary(fit)  #nothing sig
 
@@ -241,12 +241,12 @@ RPP vs BC analysis
   #when ur a bc enrolled student who is a transfer, there isn't a difference with ur PS score vs students who aren't enrolled (this is referring to the three-way interaction)
     #student's backgrounds don't matter here
   #we do see the similar results that we saw with first gen, but those are the two-way interactions described above
-#across the transfer and first-gen models, we see two-way interactions come out (bc_treatment::CC_score)
+#across the transfer and first-gen models, we see two-way interactions come out (treatment::CC_score)
     
     #Generation Status
         mod<-lm(possible_score~
-                CC_score*bc_treatment*RD_first_gen
-                +SC_score*bc_treatment*RD_first_gen, 
+                CC_score*treatment*RD_first_gen
+                +SC_score*treatment*RD_first_gen, 
                 data=fulldat)
             summary(mod)
     #same reasoning for gen status insignificance as above 
@@ -254,25 +254,25 @@ RPP vs BC analysis
 
 ```{r line graphs}
 #PS~CC/SC*BC
-fit<-lm(possible_score~CC_score*bc_treatment+SC_score*bc_treatment, data=fulldat)
+fit<-lm(possible_score~CC_score*treatment+SC_score*treatment, data=fulldat)
 summary(fit)
-plot_model(lm(possible_score ~ CC_score*bc_treatment,
+plot_model(lm(possible_score ~ CC_score*treatment,
                 data = fulldat), type = "int",
            title="Predicted Possible Self Rating",
            axis.title = c("Capital Score", "Possible Self Rating"),
            legend.title = "Berkeley Connect Enrollment")
 
-fit<-lm(possible_score~CC_score*bc_treatment, data=fulldat)
+fit<-lm(possible_score~CC_score*treatment, data=fulldat)
 summary(fit)
-plot_model(lm(possible_score ~ CC_score*bc_treatment,
+plot_model(lm(possible_score ~ CC_score*treatment,
                 data = fulldat), type = "int",
            title="Predicted Possible Self Rating",
            axis.title = c("Cultural Capital Score", "Possible Self Rating"),
            legend.title = "Berkeley Connect Enrollment")
 
-fit<-lm(possible_score~SC_score*bc_treatment, data=fulldat)
+fit<-lm(possible_score~SC_score*treatment, data=fulldat)
 summary(fit)
-plot_model(lm(possible_score ~ SC_score*bc_treatment,
+plot_model(lm(possible_score ~ SC_score*treatment,
                 data = fulldat), type = "int",
            title="Predicted Possible Self Rating",
            axis.title = c("Social Capital Score", "Possible Self Rating"),
@@ -280,7 +280,7 @@ plot_model(lm(possible_score ~ SC_score*bc_treatment,
 
 #Moderators line graph
 #Transfer
-fit1<-lm(possible_score~CC_score*RD_transfer*bc_treatment+SC_score*RD_transfer*bc_treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*RD_transfer*treatment+SC_score*RD_transfer*treatment, data=fulldat)
 summary(fit1)
 x<-plot_model(fit1, type = "int", colors="bw",
            title="Predicted Possible Self Rating",
@@ -289,7 +289,7 @@ x<-plot_model(fit1, type = "int", colors="bw",
 x
 
 #SES
-fit1<-lm(possible_score~CC_score*social_class*bc_treatment+SC_score*social_class*bc_treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*social_class*treatment+SC_score*social_class*treatment, data=fulldat)
 summary(fit1)
 x<-plot_model(fit1, type = "int",
            title="Predicted Possible Self Rating",
@@ -297,7 +297,7 @@ x<-plot_model(fit1, type = "int",
 x
 
 #gen status
-fit1<-lm(possible_score~CC_score*RD_first_gen*bc_treatment+SC_score*RD_first_gen*bc_treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*RD_first_gen*treatment+SC_score*RD_first_gen*treatment, data=fulldat)
 summary(fit1)
 x<-plot_model(fit1, type = "int",
            title="Predicted Possible Self Rating",
