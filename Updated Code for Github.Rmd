@@ -73,10 +73,6 @@ RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
 # for bc: 976 before removing ac, after removing attention checks == 883, after for survey duration == 751
 # survey duration - decided to keep 85% percentile in both bc and rpp
 
-# for mixed models, create long dataset to model within classroom
-roster <- read.csv("~/RA 23-24/_Roster_Qualtrics_V2_Final_original.csv")
-BCdat <- merge(roster[,c("Email", "SectionName")], BCdat, by.x = "Email", by.y = "RecipientEmail", all.y = T)
-
 ```
 
 Combine dataframes
