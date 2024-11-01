@@ -25,6 +25,7 @@ library(stdmod)
 library(corrtable)
 library(lazyeval)
 library(plotly)
+library(Hmisc)
 pkgs <- c("effectsize", "flextable", "interactions")
 install_if_not_installed(pkgs)
 
@@ -112,7 +113,7 @@ fulldat$RD_transfer <- revalue(fulldat$RD_transfer,
                c("First-year Entrant"="0", "Transfer Entrant"="1", "Other"="NA"))  #numerizing values
 fulldat$RD_transfer<-as.numeric(fulldat$RD_transfer)  #converting string into numeric 
 
-#getting first_gen and tranfser data from registered distribution data
+#getting first_gen and tranfser data from registered distribution data -- My's comment: is this section needed? feels redundant
     RPP_ds<-merge(RDdata,RPPdat,by="random_ID") 
     RPP_ds$RD_first_gen <- revalue(RPP_ds$RD_first_gen,
                c("Not First Generation College"="0", "First Generation College"="1", "Unknown"="NA"))  #numerizing values
@@ -121,18 +122,16 @@ fulldat$RD_transfer<-as.numeric(fulldat$RD_transfer)  #converting string into nu
                c("First-year Entrant"="0", "Transfer Entrant"="1", "Other"="NA"))  #numerizing values
     RPP_ds$RD_transfer<-as.numeric(RPP_ds$RD_transfer)  #converting string into numeric 
     
-#alpha scores for varibales    
-x<-data.frame(fulldat$possible_score, fulldat$CC_score, fulldat$SC_score)
-psych::alpha(x)
+
 ```
 
 ## Descriptive Stats
 ```{r Descriptive Stats}
 #fulldat descriptive stats
-table(fgs$FirstGenCollegeGradDesc) #tells you number of first gen vs non first gen
-table(fgs$ShortEthnicDescCaptured) #tells you race distribution
+table(fulldat$FirstGenCollegeGradDesc) #tells you number of first gen vs non first gen
+table(fulldat$ShortEthnicDescCaptured) #tells you race distribution
 describe(fulldat$social_class) #tells you class distribution
-table(ts$Entry.Status) #tells you transfer distribution
+table(fulldat$Entry.Status) #tells you transfer distribution
 
 table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==1]) #race of bc
 table(fulldat$ShortEthnicDescCaptured[fulldat$bc_treatment==0]) #race of rpp
@@ -140,14 +139,6 @@ mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==1]) #age of bc
 mean(fulldat$AgeAtSnapshot[fulldat$bc_treatment==0]) #age of rpp
 table(fulldat$RD_first_gen[fulldat$bc_treatment==1]) #firstgen of bc
 table(fulldat$RD_first_gen[fulldat$bc_treatment==0]) #firstgen of rpp
-
-
-#Getting the cronbach alpha scores for relevant variables
-fulldat %>%
-  dplyr::select(CC_score, CC_ling_score, CC_nav_score, 
-                SC_score, SC_emo_score, SC_inst_score, 
-                possible_score, positivity, plausibility) %>%
-  psych::alpha()
 
 ```
 
@@ -175,27 +166,10 @@ ggplot(fulldat, aes(bc_treatment))+
 
 Correlation Matrix
 ```{r Correlation Matrix}
-#Corr matrix for variables
-cor_vars <- c("possible_score",
-              "CC_score","SC_score") # capital
-cordat<-rbind(fulldat[,cor_vars])
-cor<-cor(cordat, use = "complete.obs")
-upper<-cor
-upper[upper.tri(cor)]<-""
-upper<-as.data.frame(upper)
-print(upper)
-correlation_matrix(cordat, digits=2, use="lower", replace_diagonal = T)
-
-#Corr matrix for moderators
-cor_vars <- c("social_class","RD_first_gen", "RD_transfer")
-cordat<-rbind(fulldat[,cor_vars])
-cor<-cor(cordat, use = "complete.obs")
-upper<-cor
-upper[upper.tri(cor)]<-""
-upper<-as.data.frame(upper)
-print(upper)
-correlation_matrix(cordat, digits=2, use="lower", replace_diagonal = T)
-#save_correlation_matrix(df=cordat, filename= "moderators-correlation-matrix.csv", digits=3, use="lower")
+# correlations between predictors, moderators, and outcomes
+matCorr <- Hmisc::rcorr(as.matrix(fulldat[, c("possible_score",
+              "CC_score","SC_score", "social_class", 
+              "RD_first_gen", "RD_transfer")]))
 ```
 
 ```{r T-Tests}
