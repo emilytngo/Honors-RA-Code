@@ -70,11 +70,8 @@ se.nna <- function (x)
 BCdat <- read.csv("~/RA 23-24/Fall23_BC_clean_data_randID.csv")
 RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
 # for rpp: 534 before removing ac, after for attention checks == 514 (removed 20), after for survey duration == 437 (removed 77)
-
-#survey duration - need to decide what percentile to keep
-psych::describe(BCdat$Duration..in.seconds.)
-
-quantile(BCdat$Duration..in.seconds., c(.15, .50, .85)) 
+# for bc: 976 before removing ac, after removing attention checks == 883, after for survey duration == 751
+# survey duration - decided to keep 85% percentile in both bc and rpp
 
 # for mixed models, create long dataset to model within classroom
 roster <- read.csv("~/RA 23-24/_Roster_Qualtrics_V2_Final_original.csv")
