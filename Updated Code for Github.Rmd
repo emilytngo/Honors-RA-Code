@@ -26,6 +26,7 @@ library(corrtable)
 library(lazyeval)
 library(plotly)
 library(Hmisc)
+library(bda)
 pkgs <- c("effectsize", "flextable", "interactions")
 install_if_not_installed(pkgs)
 
@@ -96,12 +97,13 @@ fulldat$treatment[1:437] <- 0
 fgs<-read.csv("BC_RPP_Fall2023_Registered_Distributed.csv")
 ts<-read.csv("BC_RPP_Fall2023_App_Cohort_Deg_Distributed.csv")
 
-first_gen<-fgs[c("random_id", "FirstGenCollegeGradDesc", "AgeAtSnapshot","ShortEthnicDescCaptured")]  #select columns needed
+first_gen<-fgs[c("random_id", "FirstGenCollegeGradDesc", "AgeAtSnapshot","ShortEthnicDescCaptured","PersonGenderDesc")]  #select columns needed
 names(first_gen)[1]<-"random_ID"  #rename 
 names(first_gen)[2]<-"RD_first_gen"  #rename
 
-transfer<-ts[c("random_ID", "Entry.Status")]  #select columns needed
+transfer<-ts[c("random_ID", "Entry.Status", "Sort.Stud.Appl.Incm.Rnge.Amt...Parent")]  #select columns needed
 names(transfer)[2]<-"RD_transfer"  #rename
+names(transfer)[3]<-"RD_parent_income"  #rename
 
 RDdata<-merge(first_gen,transfer,by="random_ID")  #combine first gen dataset and transfer dataset
 fulldat<-merge(RDdata,fulldat,by="random_ID")   #combine the combined first gen and transfer dataset with fulldat
@@ -121,8 +123,13 @@ fulldat$RD_transfer<-as.numeric(fulldat$RD_transfer)  #converting string into nu
     RPP_ds$RD_transfer <- revalue(RPP_ds$RD_transfer,
                c("First-year Entrant"="0", "Transfer Entrant"="1", "Other"="NA"))  #numerizing values
     RPP_ds$RD_transfer<-as.numeric(RPP_ds$RD_transfer)  #converting string into numeric 
-    
-
+    fulldat$RD_parent_income <- revalue(fulldat$RD_parent_income,
+               c("(A)$0-$1799"="1", "(B)$1800-$2999"="2", "(C)$3000-$5999"="3",
+                 "(D)$6000-$11999"="4", "(E)$12000-$17999"="5", "(F)$18000-$23999"="6",
+                 "(G)$24000-$35999"="7", "(H)$36000-$47999"="8", "(I)$48000-$99999"="9",
+                 "(J)$100000-MORE"="10"))  #numerizing values
+  fulldat$RD_parent_income[fulldat$RD_parent_income==""] <- NA # replacing blank cells with NA
+  fulldat$RD_parent_income<-as.numeric(fulldat$RD_parent_income)  #converting string into numeric
 ```
 
 ## Descriptive Stats
@@ -170,6 +177,15 @@ Correlation Matrix
 matCorr <- Hmisc::rcorr(as.matrix(fulldat[, c("possible_score",
               "CC_score","SC_score", "social_class", 
               "RD_first_gen", "RD_transfer")]))
+
+apa.cor.table(
+  cordat,
+  filename = NA,
+  table.number = NA,
+  show.conf.interval = TRUE,
+  show.sig.stars = TRUE,
+  landscape = TRUE
+)
 ```
 
 ```{r T-Tests}
@@ -197,16 +213,40 @@ RPP vs BC analysis
 #RPP vs BC Analysis
 #Is PS positively correlated with cultural and social capital?
   #Possible Score
-    mod<-lm(possible_score~CC_score+SC_score, data=fulldat)
+    mod<-lm(possible_score~CC_score+SC_score+treatment, data=fulldat)
     confint(mod)
     summary(mod)
     
-    #when we add BC enrollment as a predictor, the interactions weakens
-    mod<-lm(possible_score~CC_score*treatment
-            +SC_score*treatment,
+    ####FINAL MODEL: when we add BC enrollment as a predictor####
+    mod<-lm(possible_score~CC_score*treatment,
             data=fulldat) 
     confint(mod)
-    summary(mod)
+    summary(mod) ####report the numbers in this model, there's a main effect (0.11**), and also an interaction of CC:treatment (0.11*)
+    
+    
+   #don't use 
+    mod<-lm(possible_score~CC_score*SC_score*treatment,
+            data=fulldat) #three-way interaction
+        summary(mod) #if you're in the treatment group, and as your cc and sc increases, there's a little bit of a positive direction towards PS (not sig, basically 0)
+        #Because the three-way doesn't work, we're using the two-way as our final model (the model before this one)
+
+    #taking out demographic differences (gen and transfer stat)    
+    mod<-lm(possible_score~CC_score*treatment,
+            data=fulldat[fulldat$RD_first_gen==0&fulldat$RD_transfer==0,]) 
+     summary(mod) 
+     #taking out first-gen and transfer students, CC in the treatment group has a positive association with possible self score (0.15*), that is, being in this treatment group gives you a greater bump in PS with a higher amount of CC
+     
+         #taking out demographic differences (gen and transfer stat)    
+    mod<-lm(possible_score~CC_score*treatment,
+            data=fulldat[fulldat$RD_first_gen==1&fulldat$RD_transfer==1,]) 
+     summary(mod)
+     #for transfer and first-gen students, BC doesn't necessarily do anything for them (0.003, no sig)
+     #CC gained thru BC is not particularly helpful for first-gen and transfer students, but there is a marginally significant positive main effect of CC on PS (0.23, p<0.05)
+     #marginalized students start out with a lower PS score (look at the intercept) and gaining CC doesn't necessarily help them (adding the beta of CC and/or cc:treatment onto the intercept)
+     
+     ##notes from running with SC+treatment and taking out demo differences
+     #when we take out our demographic differences by taking out first gen and transfers in both groups, we see a sig main effect of SC on PS (as SC goes up, PS goes up by 0.2***). However, we see the two-way interaction with treatment (that is students being in our treatment group), this main effect goes away, and we see that as SC increases, PS decreases by -0.15 (p<0.05)
+     #with more mentorship and connections, your PS goes down if you're enrolled in BC
 ```
 
 ```{r RPP vs BC analysis Moderators}
@@ -214,9 +254,9 @@ RPP vs BC analysis
   #Does SES moderate the interaction? 
   #Social class 
     fit<-lm(possible_score~
-              CC_score*social_class*treatment+
-              SC_score*social_class*treatment, na.rm=T, data=fulldat)
-    summary(fit)  #nothing sig
+              CC_score*social_class*treatment, na.rm=T, data=fulldat)
+    summary(fit)  #after taking out sc
+    #people who are higher in social class and enrolled in berkeley connect and report higher CC, also predict higher PS (0.09*)
    #First- Gen
       #PS~CC+SC
     fit<-lm(possible_score~
@@ -280,20 +320,35 @@ plot_model(lm(possible_score ~ SC_score*treatment,
 
 #Moderators line graph
 #Transfer
-fit1<-lm(possible_score~CC_score*RD_transfer*treatment+SC_score*RD_transfer*treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*RD_transfer*treatment, data=fulldat)
 summary(fit1)
 x<-plot_model(fit1, type = "int", colors="bw",
            title="Predicted Possible Self Rating",
            axis.title = c("Capital Score", "Possible Self Rating"),
            legend.title = "Transfer Status")  #refer to graph #6 that generates
-x
+x  #nothing special about being a transfer student and in berkeley connect on a positive association of CC with PS
 
 #SES
-fit1<-lm(possible_score~CC_score*social_class*treatment+SC_score*social_class*treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*social_class*treatment, data=fulldat)
 summary(fit1)
 x<-plot_model(fit1, type = "int",
            title="Predicted Possible Self Rating",
            axis.title = c("Cultural Capital Score", "Possible Self Rating")) #refer to graph #6 that generates
+x
+
+fit1<-lm(CC_score~social_class*treatment, data=fulldat)
+summary(fit1)
+x<-plot_model(fit1, type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Cultural Capital Score", "Possible Self Rating"))
+x
+
+#using parental income as mod instead of social_class
+fit1<-lm(possible_score~CC_score*RD_parent_income*treatment, data=fulldat)
+summary(fit1)
+x<-plot_model(fit1, type = "int",
+           title="Predicted Possible Self Rating",
+           axis.title = c("Cultural Capital Score", "Possible Self Rating"))
 x
 
 #gen status
@@ -305,4 +360,28 @@ x<-plot_model(fit1, type = "int",
 x
 ```
 
+```{r Indirect Effect Model (Mediation)}
+#a=treatment, b=CC_score, c=possible_score
+#x=treatment, m=CC_score, y=possible_score
+fulldat_nona<-fulldat[,c('CC_score', 'treatment', 'possible_score')] #taking out interested variables
+fulldat_nona<-na.omit(fulldat_nona) #taking out NAs
+
+direct.model <- lm(possible_score ~ treatment, data = fulldat_nona) #gives us the direct effect btw a and c (0.221)
+#we can also check if the following indirect models are correct if (2nd beta * 4th beta) + 3rd beta == this direct effect
+round(cbind(coef(direct.model), confint(direct.model)), 3)
+summary(direct.model)
+
+indirect.model1 <- lm(CC_score ~ treatment, data = fulldat_nona) #gives us the relationship btw a and b (2nd beta=0.796)
+round(cbind(coef(indirect.model1), confint(indirect.model1)), 3)
+
+indirect.model2 <- lm(possible_score ~ treatment + CC_score, data = fulldat_nona) #gives us c' (third beta= 0.082) the relationship btw b and c (fourth beta=0.174)
+round(cbind(coef(indirect.model2), confint(indirect.model2)), 3)
+
+
+mediation <- mediation.test(fulldat_nona$CC_score, fulldat_nona$treatment, fulldat_nona$possible_score) #sobel z-value is 6.367
+round(mediation, 3)
+
+mediation.results <- mediate(indirect.model1, indirect.model2, treat = 'treatment', mediator = 'CC_score', boot = TRUE, sims = 1000) #ACME is 0.139, we can also check this number by multiplying 2nd beta * 4th beta
+summary(mediation.results)
+```
 
