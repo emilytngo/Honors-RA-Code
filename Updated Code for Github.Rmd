@@ -27,6 +27,10 @@ library(lazyeval)
 library(plotly)
 library(Hmisc)
 library(bda)
+library(mediation)
+library(report)
+library(flextable)
+library(tidyr)
 pkgs <- c("effectsize", "flextable", "interactions")
 install_if_not_installed(pkgs)
 
@@ -72,7 +76,7 @@ se.nna <- function (x)
 BCdat <- read.csv("~/RA 23-24/Fall23_BC_clean_data_randID.csv")
 RPPdat <- read.csv("~/RA 23-24/Fall23_RPP_clean_data_randID.csv")
 # for rpp: 534 before removing ac, after for attention checks == 514 (removed 20), after for survey duration == 437 (removed 77)
-# for bc: 976 before removing ac, after removing attention checks == 883, after for survey duration == 751
+# for bc: 976 before removing ac, after removing attention checks == 883, after for survey duration == 751, went down to 622 after excluding people who participated in BC more than once
 # survey duration - decided to keep 85% percentile in both bc and rpp
 
 ```
@@ -130,22 +134,50 @@ fulldat$RD_transfer<-as.numeric(fulldat$RD_transfer)  #converting string into nu
                  "(J)$100000-MORE"="10"))  #numerizing values
   fulldat$RD_parent_income[fulldat$RD_parent_income==""] <- NA # replacing blank cells with NA
   fulldat$RD_parent_income<-as.numeric(fulldat$RD_parent_income)  #converting string into numeric
+  
 ```
 
 ## Descriptive Stats
 ```{r Descriptive Stats}
 #fulldat descriptive stats
-table(fulldat$FirstGenCollegeGradDesc) #tells you number of first gen vs non first gen
+table(fulldat$RD_first_gen) #tells you number of first gen vs non first gen
 table(fulldat$ShortEthnicDescCaptured) #tells you race distribution
 describe(fulldat$social_class) #tells you class distribution
-table(fulldat$Entry.Status) #tells you transfer distribution
+table(fulldat$RD_transfer) #tells you transfer distribution
 
 table(fulldat$ShortEthnicDescCaptured[fulldat$treatment==1]) #race of bc
 table(fulldat$ShortEthnicDescCaptured[fulldat$treatment==0]) #race of rpp
 mean(fulldat$AgeAtSnapshot[fulldat$treatment==1]) #age of bc
 mean(fulldat$AgeAtSnapshot[fulldat$treatment==0]) #age of rpp
+range(fulldat$AgeAtSnapshot) #min and max age of everyone
+mean(fulldat$AgeAtSnapshot) #avg age of everyone
+sd(fulldat$AgeAtSnapshot) #sd age of everyone
+table(fulldat$PersonGenderDesc[fulldat$treatment==1]) #gender of bc
+table(fulldat$PersonGenderDesc[fulldat$treatment==0]) #gender of rpp
+table(fulldat$PersonGenderDesc) #gender distribution of everyone
+table(BCdat$p_race) #race of bd
+#race of RPP dat
+table(RPPdat$p_race_White)
+table(RPPdat$p_race_Black)
+table(RPPdat$p_race_Native) #no native students, counted into "Other" category
+table(RPPdat$p_race_Asian)
+table(RPPdat$p_race_Hawaiian) #counted into "Other" category
+table(RPPdat$p_race_Latino)
+table(RPPdat$p_race_Other)
+names(RPPdat)
+RPPdat$p_race_mixed<-rowSums(RPPdat[,c("p_race_White","p_race_Black","p_race_Native","p_race_Asian","p_race_Hawaiian","p_race_Latino","p_race_Other")], na.rm=T)
+
 table(fulldat$RD_first_gen[fulldat$treatment==1]) #firstgen of bc
 table(fulldat$RD_first_gen[fulldat$treatment==0]) #firstgen of rpp
+
+
+#Percentage of first gen and transfer of total sample
+(table(fulldat$RD_first_gen[fulldat$treatment==1])[2])/nrow(fulldat) #first gen percent in bc
+(table(fulldat$RD_transfer[fulldat$treatment==1])[2])/nrow(fulldat) #transfer percent in bc
+(table(fulldat$RD_first_gen[fulldat$treatment==0])[2])/nrow(fulldat) #first gen percent in rpp
+(table(fulldat$RD_transfer[fulldat$treatment==0])[2])/nrow(fulldat) #transfer percent in rpp
+(table(fulldat$RD_first_gen)[2])/nrow(fulldat) #first gen percent overall
+(table(fulldat$RD_transfer)[2])/nrow(fulldat) #transfer percent overall
 
 ```
 
@@ -165,27 +197,62 @@ psych::describe(BCdat$SC_score)
 hist(BCdat$possible_score)
 
 #Something fun, bar graph of linguistic CC in BC vs RPP sample
-df<-data.frame(x=fulldat$treatment, y=fulldat$CC_ling_score)
+df<-data.frame(x=fulldat$treatment, y=fulldat$CC_score)
 ggplot(fulldat, aes(treatment))+
-  geom_bar(aes(fill=as.factor(CC_ling_score)))
+  geom_bar(aes(fill=CC_score))
 
+#create data
+n_treatment <- 435  #number of students in treatment
+n_control <- 616    #number of students in control
+df <- data.frame(
+  group = c(rep("Treatment", n_treatment), rep("Control", n_control)),    #creates two categories: treatment and control
+  cc = c(fulldat$CC_score[fulldat$treatment==1], fulldat$CC_score[fulldat$treatment==0]),    #adding in cc values
+  ps = c(fulldat$possible_score[fulldat$treatment==1], fulldat$possible_score[fulldat$treatment==0])   #adding in ps values
+) 
+
+data_long <- df %>%    #makes data "long", don't know, this is what troubleshooting told me to do
+  pivot_longer(cols = c(cc, ps), names_to = "Variable", values_to = "Score") %>%  
+  filter(!is.na(Score))  #take out na's
+
+summary_stats <- data_long %>%
+  group_by(group, Variable) %>%
+  summarise(
+    mean_score = mean(Score),   #takes mean of cc and ps
+    se_score = sd(Score) / sqrt(n()),  #calculates standard error
+    .groups = "keep"   #keep disaggregating data by treatment vs control
+  )
+
+ggplot(summary_stats, aes(x = group, y = mean_score, fill = Variable)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) +   # Bar width and dodging bars
+  geom_errorbar(aes(ymin = mean_score - se_score, ymax = mean_score + se_score), 
+                position = position_dodge(0.7), width = 0.25) +  # Error bars
+  labs(x = "Group", y = "Ratings") +
+  scale_fill_manual(
+    values = c("skyblue", "orange"),  # Custom colors for cc and ps
+    labels = c("Cultural Capital", "Possible Selves")  # Rename legend labels
+  ) +
+  scale_y_continuous(breaks = seq(1,7, by = 1)) +  # Set y-axis from 1 to 7
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 Correlation Matrix
 ```{r Correlation Matrix}
-# correlations between predictors, moderators, and outcomes
-matCorr <- Hmisc::rcorr(as.matrix(fulldat[, c("possible_score",
-              "CC_score","SC_score", "social_class", 
-              "RD_first_gen", "RD_transfer")]))
-
-apa.cor.table(
+#correlation matrix with M, SD, and CI of PS, CC, SES, gen-stat, and transfer
+cordat<-fulldat[, c("possible_score",
+              "CC_score", "social_class", 
+              "RD_first_gen", "RD_transfer")] #create dataset of interested variables
+cor.table<-apa.cor.table(
   cordat,
-  filename = NA,
+  filename = "test.CorTable.pptx",
   table.number = NA,
   show.conf.interval = TRUE,
   show.sig.stars = TRUE,
   landscape = TRUE
-)
+)  #creates corr table and attributes it to the name "cor.table"
+cor.table #view your creation
+
+flextable::save_as_docx(cor.table, path = "correlation_table.docx") #saves to your downloads folder
 ```
 
 ```{r T-Tests}
@@ -193,6 +260,27 @@ apa.cor.table(
 #First, I look at what CC looks like to get a hint on group difference
 describe(fulldat$CC_score[fulldat$treatment==1]) #CC stats in BC group
 describe(fulldat$CC_score[fulldat$treatment==0]) #CC stats in RPP group
+describe(fulldat$CC_score) ##CC stats for both groups
+sd(fulldat$CC_score[fulldat$treatment==1]) 
+sd(fulldat$CC_score[fulldat$treatment==0]) 
+sd(fulldat$CC_score)
+
+
+#then, looking at what PS looks like on group differences
+describe(fulldat$possible_score[fulldat$treatment==1]) #CC stats in BC group
+describe(fulldat$possible_score[fulldat$treatment==0]) #CC stats in RPP group
+describe(fulldat$possible_score) ##CC stats for both groups
+sd(fulldat$possible_score[fulldat$treatment==1], na.rm=T) #needed to add na.rm=T because one response is missing
+sd(fulldat$possible_score[fulldat$treatment==0]) 
+sd(fulldat$possible_score, na.rm=T) #needed to add na.rm=T for missing response
+
+#then, looking at what social class looks like on group differences
+describe(fulldat$social_class[fulldat$treatment==1]) #CC stats in BC group
+describe(fulldat$social_class[fulldat$treatment==0]) #CC stats in RPP group
+describe(fulldat$social_class) ##CC stats for both groups
+sd(fulldat$social_class[fulldat$treatment==1], na.rm=T) #needed to add na.rm=T because one response is missing
+sd(fulldat$social_class[fulldat$treatment==0], na.rm=T) 
+sd(fulldat$social_class, na.rm=T) #needed to add na.rm=T for missing response
 
 #T-tests of PS, SC, CC between BC vs RPP groups
 t.test(fulldat$possible_score[fulldat$treatment==1],fulldat$possible_score[fulldat$treatment==0])  #sig with BC higher
@@ -203,7 +291,23 @@ t.test(fulldat$CC_nav_score[fulldat$treatment==1],fulldat$CC_nav_score[fulldat$t
 #T-tests of moderators between BC vs RPP groups
 t.test(fulldat$RD_first_gen[fulldat$treatment==1],fulldat$RD_first_gen[fulldat$treatment==0]) #slightly sig with BC higher
 t.test(fulldat$RD_transfer[fulldat$treatment==1],fulldat$RD_transfer[fulldat$treatment==0])  #sig with BC higher
-t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$treatment==0])  #sig with BC higher
+t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$treatment==0])  #sig with BC lower SES
+
+#omega squared 
+#CC first
+t_test<-t.test(fulldat$CC_score[fulldat$treatment==1],fulldat$CC_score[fulldat$treatment==0])
+t_value <- t_test$statistic
+df <- t_test$parameter
+omega_squared <- (t_value^2 - 1) / (t_value^2 + df)
+omega_squared
+#PS next
+t_test<-t.test(fulldat$possible_score[fulldat$treatment==1],fulldat$possible_score[fulldat$treatment==0])
+t_value <- t_test$statistic
+df <- t_test$parameter
+omega_squared <- (t_value^2 - 1) / (t_value^2 + df)
+omega_squared
+#Conclusion: the groups are not similar,  sig group differences
+#because the groups are different (BC having more fg, transfers, and lower social class), we need to do propensity score matching (matching the unique identities between the two groups and comparing the results then)
 
 ```
 
@@ -247,6 +351,7 @@ RPP vs BC analysis
      ##notes from running with SC+treatment and taking out demo differences
      #when we take out our demographic differences by taking out first gen and transfers in both groups, we see a sig main effect of SC on PS (as SC goes up, PS goes up by 0.2***). However, we see the two-way interaction with treatment (that is students being in our treatment group), this main effect goes away, and we see that as SC increases, PS decreases by -0.15 (p<0.05)
      #with more mentorship and connections, your PS goes down if you're enrolled in BC
+        
 ```
 
 ```{r RPP vs BC analysis Moderators}
@@ -257,7 +362,8 @@ RPP vs BC analysis
               CC_score*social_class*treatment, na.rm=T, data=fulldat)
     summary(fit)  #after taking out sc
     #people who are higher in social class and enrolled in berkeley connect and report higher CC, also predict higher PS (0.09*)
-   #First- Gen
+   
+    #First- Gen
       #PS~CC+SC
     fit<-lm(possible_score~
               CC_score*RD_first_gen*treatment+
@@ -352,14 +458,14 @@ x<-plot_model(fit1, type = "int",
 x
 
 #gen status
-fit1<-lm(possible_score~CC_score*RD_first_gen*treatment+SC_score*RD_first_gen*treatment, data=fulldat)
+fit1<-lm(possible_score~CC_score*RD_first_gen*treatment, data=fulldat)
+confint(fit1)
 summary(fit1)
 x<-plot_model(fit1, type = "int",
            title="Predicted Possible Self Rating",
            axis.title = c("Cultural Capital Score", "Possible Self Rating")) #refer to graph #6 that generates
 x
 ```
-
 ```{r Indirect Effect Model (Mediation)}
 #a=treatment, b=CC_score, c=possible_score
 #x=treatment, m=CC_score, y=possible_score
@@ -384,4 +490,3 @@ round(mediation, 3)
 mediation.results <- mediate(indirect.model1, indirect.model2, treat = 'treatment', mediator = 'CC_score', boot = TRUE, sims = 1000) #ACME is 0.139, we can also check this number by multiplying 2nd beta * 4th beta
 summary(mediation.results)
 ```
-
