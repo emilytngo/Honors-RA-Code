@@ -169,6 +169,11 @@ RPPdat$p_race_mixed<-rowSums(RPPdat[,c("p_race_White","p_race_Black","p_race_Nat
 
 table(fulldat$RD_first_gen[fulldat$treatment==1]) #firstgen of bc
 table(fulldat$RD_first_gen[fulldat$treatment==0]) #firstgen of rpp
+table(fulldat$RD_first_gen) #firstgen of full sample
+
+table(fulldat$RD_transfer[fulldat$treatment==1]) #firstgen of bc
+table(fulldat$RD_transfer[fulldat$treatment==0]) #firstgen of rpp
+table(fulldat$RD_transfer) #firstgen of full sample
 
 
 #Percentage of first gen and transfer of total sample
@@ -293,19 +298,7 @@ t.test(fulldat$RD_first_gen[fulldat$treatment==1],fulldat$RD_first_gen[fulldat$t
 t.test(fulldat$RD_transfer[fulldat$treatment==1],fulldat$RD_transfer[fulldat$treatment==0])  #sig with BC higher
 t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$treatment==0])  #sig with BC lower SES
 
-#omega squared 
-#CC first
-t_test<-t.test(fulldat$CC_score[fulldat$treatment==1],fulldat$CC_score[fulldat$treatment==0])
-t_value <- t_test$statistic
-df <- t_test$parameter
-omega_squared <- (t_value^2 - 1) / (t_value^2 + df)
-omega_squared
-#PS next
-t_test<-t.test(fulldat$possible_score[fulldat$treatment==1],fulldat$possible_score[fulldat$treatment==0])
-t_value <- t_test$statistic
-df <- t_test$parameter
-omega_squared <- (t_value^2 - 1) / (t_value^2 + df)
-omega_squared
+
 #Conclusion: the groups are not similar,  sig group differences
 #because the groups are different (BC having more fg, transfers, and lower social class), we need to do propensity score matching (matching the unique identities between the two groups and comparing the results then)
 
