@@ -230,21 +230,35 @@ summary_stats <- data_long %>%
   summarise(
     mean_score = mean(Score),   #takes mean of cc and ps
     se_score = sd(Score) / sqrt(n()),  #calculates standard error
+    n = n(),
     .groups = "keep"   #keep disaggregating data by treatment vs control
+  )
+
+alpha <- 0.05  # 95% CI
+summary_stats <- summary_stats %>%
+  mutate(
+    # Calculate the t-value for 95% CI, based on the degrees of freedom (n - 1)
+    t_value = qt(1 - alpha / 2, df = n - 1),
+    # Calculate the lower and upper bounds of the confidence interval
+    ci_lower = mean_score - t_value * se_score,
+    ci_upper = mean_score + t_value * se_score
   )
 
 ggplot(summary_stats, aes(x = group, y = mean_score, fill = Variable)) +
   geom_bar(stat = "identity", position = "dodge", width = 0.7) +   # Bar width and dodging bars
-  geom_errorbar(aes(ymin = mean_score - se_score, ymax = mean_score + se_score), 
-                position = position_dodge(0.7), width = 0.25) +  # Error bars
-  labs(x = "Group", y = "Ratings") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), 
+                position = position_dodge(0.7), width = 0.25) +  # Error bars with CI
+  labs(x= element_blank(), y = "Ratings") +
   scale_fill_manual(
-    values = c("skyblue", "orange"),  # Custom colors for cc and ps
+    values = c("gray", "black"),  # Custom colors for cc and ps
     labels = c("Cultural Capital", "Possible Selves")  # Rename legend labels
   ) +
   scale_y_continuous(breaks = seq(1,7, by = 1)) +  # Set y-axis from 1 to 7
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 0, hjust = 0.5),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.title = element_blank())  # Remove the legend title)
 ```
 
 Correlation Matrix
