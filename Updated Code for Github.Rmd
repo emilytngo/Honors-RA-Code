@@ -31,6 +31,12 @@ library(mediation)
 library(report)
 library(flextable)
 library(tidyr)
+library(mediation) #Mediation package
+library(rockchalk) #Graphing simple slopes; moderation
+library(multilevel) #Sobel Test
+library(gvlma) #Testing Model Assumptions 
+library(stargazer) #Handy regression tables
+library(effsize)
 pkgs <- c("effectsize", "flextable", "interactions")
 install_if_not_installed(pkgs)
 
@@ -258,6 +264,18 @@ cor.table<-apa.cor.table(
 cor.table #view your creation
 
 flextable::save_as_docx(cor.table, path = "correlation_table.docx") #saves to your downloads folder
+
+zerocor<-fulldat[, c("social_class", 
+              "RD_first_gen", "RD_transfer")]
+zero.cor.table<-apa.cor.table(
+  zerocor,
+  filename = NA,
+  table.number = NA,
+  show.conf.interval = TRUE,
+  show.sig.stars = TRUE,
+  landscape = TRUE
+)  #creates corr table and attributes it to the name "cor.table"
+zero.cor.table #view your creation
 ```
 
 ```{r T-Tests}
@@ -298,6 +316,29 @@ t.test(fulldat$RD_first_gen[fulldat$treatment==1],fulldat$RD_first_gen[fulldat$t
 t.test(fulldat$RD_transfer[fulldat$treatment==1],fulldat$RD_transfer[fulldat$treatment==0])  #sig with BC higher
 t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$treatment==0])  #sig with BC lower SES
 
+#cohen's d
+
+group_a<-na.omit(fulldat$CC_score[fulldat$treatment==1]) #replace with any variable ur interested in, treatment group
+group_b<-na.omit(fulldat$CC_score[fulldat$treatment==0])  #same as above, control group
+
+# Calculate means for each group
+mean_a <- mean(group_a)
+mean_b <- mean(group_b)
+
+# Calculate standard deviations for each group
+sd_a <- sd(group_a)
+sd_b <- sd(group_b)
+
+# Calculate sample sizes for each group
+n_a <- length(group_a)
+n_b <- length(group_b)
+
+# Calculate pooled standard deviation
+sd_pooled <- sqrt(((n_a - 1) * sd_a^2 + (n_b - 1) * sd_b^2) / (n_a + n_b - 2))
+
+# Calculate Cohen's d
+cohen_d <- (mean_a - mean_b) / sd_pooled
+cohen_d
 
 #Conclusion: the groups are not similar,  sig group differences
 #because the groups are different (BC having more fg, transfers, and lower social class), we need to do propensity score matching (matching the unique identities between the two groups and comparing the results then)
@@ -307,18 +348,25 @@ t.test(fulldat$social_class[fulldat$treatment==1],fulldat$social_class[fulldat$t
 
 RPP vs BC analysis
 ```{r RPP vs BC Analysis}
+#Since SES is massing responses, we need to omit any nas in a new data frame
+fulldat_nona_anova<-fulldat[,c('CC_score', 'treatment', 'possible_score', "social_class")] #taking out interested variables
+fulldat_nona_anova<-na.omit(fulldat_nona_anova) #take out na's
+
 #RPP vs BC Analysis
 #Is PS positively correlated with cultural and social capital?
-  #Possible Score
-    mod<-lm(possible_score~CC_score+SC_score+treatment, data=fulldat)
-    confint(mod)
-    summary(mod)
+      ####FINAL MODEL: when we add BC enrollment as a predictor####
+    mod1<-lm(possible_score~CC_score,
+            data=fulldat_nona_anova) 
+    confint(mod1)
+    summary(mod1) ####report the numbers in this model, there's a main effect (0.11**), and also an interaction of CC:treatment (0.11*)
     
-    ####FINAL MODEL: when we add BC enrollment as a predictor####
-    mod<-lm(possible_score~CC_score*treatment,
-            data=fulldat) 
-    confint(mod)
-    summary(mod) ####report the numbers in this model, there's a main effect (0.11**), and also an interaction of CC:treatment (0.11*)
+    mod2<-lm(possible_score~CC_score*treatment,
+            data=fulldat_nona_anova) 
+    confint(mod2)
+    summary(mod2) ####report the numbers in this model, there's a main effect (0.11**), and also an interaction of CC:treatment (0.11*)
+    
+    #comparing the two models
+    anova(mod1, mod2)
     
     
    #don't use 
@@ -352,7 +400,8 @@ RPP vs BC analysis
   #Does SES moderate the interaction? 
   #Social class 
     fit<-lm(possible_score~
-              CC_score*social_class*treatment, na.rm=T, data=fulldat)
+              CC_score*social_class*treatment, na.rm=T, data=fulldat_nona_anova)
+    confint(fit)
     summary(fit)  #after taking out sc
     #people who are higher in social class and enrolled in berkeley connect and report higher CC, also predict higher PS (0.09*)
    
@@ -482,4 +531,19 @@ round(mediation, 3)
 
 mediation.results <- mediate(indirect.model1, indirect.model2, treat = 'treatment', mediator = 'CC_score', boot = TRUE, sims = 1000) #ACME is 0.139, we can also check this number by multiplying 2nd beta * 4th beta
 summary(mediation.results)
+
+##Using Bayesian Test instead##
+fitM <- lm(CC_score ~ treatment,     data=fulldat_nona) #IV on M; enrollment status predicting cultural capital reportings
+fitY <- lm(possible_score ~ treatment + CC_score, data=fulldat_nona) #IV and M on DV; enrollment status and cultural capital predicting possible selves ratings
+gvlma(fitM) #assumptions acceptable across the board 
+gvlma(fitY) #only assumption acceptable is heteroscedasticity
+fitMed <- mediate(fitM, fitY, treat="treatment", mediator="CC_score")
+summary(fitMed)
+plot(fitMed)
+
+#bootstrap
+#Bootstrap
+fitMedBoot <- mediate(fitM, fitY, boot=TRUE, sims=999, treat="treatment", mediator="CC_score")
+summary(fitMedBoot)
+plot(fitMedBoot)
 ```
